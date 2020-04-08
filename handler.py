@@ -253,27 +253,73 @@ def main(event, context):
     process.crawl(ScaperCovid)
     process.start()
 
-    # ---------------------------UPDATE OF CREATE A ROW IN THE TABLE-----------------------------
+    # --------------------------- Updating else creating in table-----------------------------
 
     with open('result.csv', newline='') as f:
         reader = csv.reader(f)
         data = list(reader)
         for i in data:
-            print('----------------------------------', i)
-            if i[8] == 'United States' and i[0] != "":
-                table.put_item(
-                    Item={
-                        "place": i[0],
-                        "cases": i[1],
-                        "new_cases": i[2],
-                        "total_cases": i[3],
-                        "deaths": i[4],
-                        "new_deaths": i[5],
-                        "total_deaths": i[6],
-                        "recovered": i[7],
-                        "region": i[8],
+            if i[8] == 'global' and i[0] != "":
+                response = table.get_item(
+                    Key={
+                        'place': str(i[0]),
+                        'region': 'global'
                     }
                 )
+
+                if 'Item' not in response.keys():
+                    table.put_item(
+                        Item={
+                            "place": i[0],
+                            "cases": i[1],
+                            "new_cases": i[2],
+                            "total_cases": i[3],
+                            "deaths": i[4],
+                            "new_deaths": i[5],
+                            "total_deaths": i[6],
+                            "recovered": i[7],
+                            "region": i[8],
+                        }
+                    )
+                else:
+                    table.update_item(
+                        Key={
+                            'place': str(i[0]),
+                            'region': 'global'
+                        },
+                        UpdateExpression='SET cases = :val1, new_cases = :val2, total_cases = :val3, deaths = :val4, new_deaths = :val5, total_deaths = :val6, recovered = :val7',
+                        ExpressionAttributeValues={
+                            ':val1': i[1],
+                            ':val2': i[2],
+                            ':val3': i[3],
+                            ':val4': i[4],
+                            ':val5': i[5],
+                            ':val6': i[6],
+                            ':val7': i[7],
+                        }
+                    )
+
+    # --------------------------- Uploading in table-----------------------------
+
+    # with open('result.csv', newline='') as f:
+    #     reader = csv.reader(f)
+    #     data = list(reader)
+    #     for i in data:
+    #         print('----------------------------------', i)
+    #         if i[8] == 'United States' and i[0] != "":
+    #             table.put_item(
+    #                 Item={
+    #                     "place": i[0],
+    #                     "cases": i[1],
+    #                     "new_cases": i[2],
+    #                     "total_cases": i[3],
+    #                     "deaths": i[4],
+    #                     "new_deaths": i[5],
+    #                     "total_deaths": i[6],
+    #                     "recovered": i[7],
+    #                     "region": i[8],
+    #                 }
+    #             )
 
     # ---------------------------S3-----------------------------
 
@@ -310,7 +356,8 @@ def main(event, context):
     #     }
     # )
 
-    # print("Table status:", table.table_status)
+    #   print("Table status:", table.table_status)
+
     print('All done !')
 
 
