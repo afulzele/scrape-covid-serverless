@@ -23,6 +23,9 @@ service: scrape-covid
 provider:
   name: aws
   runtime: python3.8
+  credentials:
+      accessKeyId: key_id
+      secretAccessKey: Access_key
 
 # you can overwrite defaults here
 #  stage: dev
@@ -49,17 +52,17 @@ provider:
 #    variable1: value1
 
 # you can add packaging information here
-#package:
+package:
 #  include:
 #    - include-me.py
 #    - include-me-dir/**
-#  exclude:
-#    - exclude-me.py
-#    - exclude-me-dir/**
+  exclude:
+    - node_modules/**
+    - venv/**
 
 functions:
-  hello:
-    handler: handler.hello
+  scrape:
+    handler: handler.main
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
 #    Check the event documentation for details
@@ -116,4 +119,4 @@ plugins:
 
 custom:
   pythonRequirements:
-    dockerizePip: non-linux
+    dockerizePip: true
