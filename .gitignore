@@ -1,5 +1,7 @@
 venv/
 node_modules/
+mapVenv/
+.idea/
 
 # Distribution / packaging
 .Python
