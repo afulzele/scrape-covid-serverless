@@ -2,6 +2,7 @@ venv/
 node_modules/
 mapVenv/
 .idea/
+*.csv
 
 # Distribution / packaging
 .Python
