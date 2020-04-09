@@ -11,7 +11,7 @@ dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 table = dynamodb.Table('Movies')
 
 BUCKET = 'covid-tracker-801101744'
-KEY = 'covid-global.csv'
+KEY = 'handle-csv/covid-global.csv'
 
 
 def represents_int(s):
@@ -32,12 +32,9 @@ class ScaperCovid(scrapy.Spider):
 
     def parse(self, response, d_list=data_list):
         rows = response.xpath('//table/tbody[1]/tr[not(@class)]')
-        # print('@-@-@-' * 100, rows)
         print('@-@-@-' * 100, rows[0].extract())
 
         for row in rows[1:]:
-
-            # print(row)
 
             new_cases = 0
             get_second_element = row.css('td')[2].extract().split('</td>')[0].strip()
@@ -92,8 +89,6 @@ class ScaperCovid(scrapy.Spider):
                 'recovered': int(recovered),
                 'region': 'global'
             }
-
-        print('@-@-@-' * 15, d_list)
 
         yield response.follow('https://www.worldometers.info/coronavirus/country/us/', callback=self.parse_world_meter_usa)
 
@@ -243,24 +238,26 @@ class ScaperCovid(scrapy.Spider):
 
 
 def main(event, context):
-    if os.path.exists(KEY):
-        os.remove(KEY)
+
+    # ---------------------------S3-----------------------------
+
+    # data = open(KEY, 'rb')
+    res = s3.list_objects_v2(Bucket=BUCKET, Prefix=KEY, MaxKeys=1)
+    if 'Contents' in res:
+        print(res)
+        s3.delete_object(Bucket=BUCKET, Key=KEY)
+    # s3.put_object(Bucket=BUCKET, Key=KEY, Body=data)
 
     process = CrawlerProcess({
         'USER_AGENT': 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)',
         'FEED_FORMAT': 'csv',
-        'FEED_URI': KEY
+        'FEED_URI': 's3://'+BUCKET+'/'+KEY
     })
 
     process.crawl(ScaperCovid)
     process.start()
 
-    # ---------------------------S3-----------------------------
-    data = open(KEY, 'rb')
-    res = s3.list_objects_v2(Bucket=BUCKET, Prefix=KEY, MaxKeys=1)
-    if 'Contents' in res:
-        s3.delete_object(Bucket=BUCKET, Key=KEY)
-    s3.put_object(Bucket=BUCKET, Key=KEY, Body=data)
+
 
     # --------------------------- Updating else creating in table-----------------------------
 

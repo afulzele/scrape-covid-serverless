@@ -24,8 +24,8 @@ provider:
   name: aws
   runtime: python3.8
   credentials:
-      accessKeyId: wergfh6534
-      secretAccessKey: 3rwefgh
+      accessKeyId: ###
+      secretAccessKey: ###
 
 # you can overwrite defaults here
 #  stage: dev
