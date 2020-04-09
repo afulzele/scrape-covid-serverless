@@ -4,13 +4,14 @@ import os
 import csv
 from scrapy.crawler import CrawlerProcess
 
-# s3 = boto3.client('s3')
+
+s3 = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 
 table = dynamodb.Table('Movies')
 
-
-# BUCKET = 'covid-serverless-bune13'
+BUCKET = 'covid-tracker-801101744'
+KEY = 'covid-global.csv'
 
 
 def represents_int(s):
@@ -30,19 +31,19 @@ class ScaperCovid(scrapy.Spider):
     data_list = {}
 
     def parse(self, response, d_list=data_list):
-        rows = response.css('table tbody')
-        rows = rows[0].css('tr')
-
-        region = rows[0].css('td')[0].css('::text').extract_first()
+        rows = response.xpath('//table/tbody[1]/tr[not(@class)]')
+        # print('@-@-@-' * 100, rows)
+        print('@-@-@-' * 100, rows[0].extract())
 
         for row in rows[1:]:
+
+            # print(row)
 
             new_cases = 0
             get_second_element = row.css('td')[2].extract().split('</td>')[0].strip()
             if represents_int(get_second_element[-1:]):
                 new_cases = (get_second_element.split(
-                    '<td style="font-weight: bold; text-align:right;background-color:#FFEEAA;">+')[1].replace(",",
-                                                                                                              "").strip())
+                    '<td style="font-weight: bold; text-align:right;background-color:#FFEEAA;">+')[1].replace(",", "").strip())
 
             deaths = 0
             get_third_element = row.css('td')[3].extract().split('</td>')[0].strip()
@@ -92,8 +93,9 @@ class ScaperCovid(scrapy.Spider):
                 'region': 'global'
             }
 
-        yield response.follow('https://www.worldometers.info/coronavirus/country/us/',
-                              callback=self.parse_world_meter_usa)
+        print('@-@-@-' * 15, d_list)
+
+        yield response.follow('https://www.worldometers.info/coronavirus/country/us/', callback=self.parse_world_meter_usa)
 
     def parse_world_meter_usa(self, response, d_list=data_list):
         rows = response.css('table tbody')
@@ -241,67 +243,74 @@ class ScaperCovid(scrapy.Spider):
 
 
 def main(event, context):
-    if os.path.exists("result.csv"):
-        os.remove("result.csv")
+    if os.path.exists(KEY):
+        os.remove(KEY)
 
     process = CrawlerProcess({
         'USER_AGENT': 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)',
         'FEED_FORMAT': 'csv',
-        'FEED_URI': 'result.csv'
+        'FEED_URI': KEY
     })
 
     process.crawl(ScaperCovid)
     process.start()
 
+    # ---------------------------S3-----------------------------
+    data = open(KEY, 'rb')
+    res = s3.list_objects_v2(Bucket=BUCKET, Prefix=KEY, MaxKeys=1)
+    if 'Contents' in res:
+        s3.delete_object(Bucket=BUCKET, Key=KEY)
+    s3.put_object(Bucket=BUCKET, Key=KEY, Body=data)
+
     # --------------------------- Updating else creating in table-----------------------------
 
-    with open('result.csv', newline='') as f:
-        reader = csv.reader(f)
-        data = list(reader)
-        for i in data:
-            if i[8] == 'global' and i[0] != "":
-                response = table.get_item(
-                    Key={
-                        'place': str(i[0]),
-                        'region': 'global'
-                    }
-                )
-
-                if 'Item' not in response.keys():
-                    table.put_item(
-                        Item={
-                            "place": i[0],
-                            "cases": i[1],
-                            "new_cases": i[2],
-                            "total_cases": i[3],
-                            "deaths": i[4],
-                            "new_deaths": i[5],
-                            "total_deaths": i[6],
-                            "recovered": i[7],
-                            "region": i[8],
-                        }
-                    )
-                else:
-                    table.update_item(
-                        Key={
-                            'place': str(i[0]),
-                            'region': 'global'
-                        },
-                        UpdateExpression='SET cases = :val1, new_cases = :val2, total_cases = :val3, deaths = :val4, new_deaths = :val5, total_deaths = :val6, recovered = :val7',
-                        ExpressionAttributeValues={
-                            ':val1': i[1],
-                            ':val2': i[2],
-                            ':val3': i[3],
-                            ':val4': i[4],
-                            ':val5': i[5],
-                            ':val6': i[6],
-                            ':val7': i[7],
-                        }
-                    )
+    # with open(KEY, newline='') as f:
+    #     reader = csv.reader(f)
+    #     data = list(reader)
+    #     for i in data:
+    #         if i[8] == 'global' and i[0] != "":
+    #             response = table.get_item(
+    #                 Key={
+    #                     'place': str(i[0]),
+    #                     'region': 'global'
+    #                 }
+    #             )
+    #
+    #             if 'Item' not in response.keys():
+    #                 table.put_item(
+    #                     Item={
+    #                         "place": i[0],
+    #                         "cases": i[1],
+    #                         "new_cases": i[2],
+    #                         "total_cases": i[3],
+    #                         "deaths": i[4],
+    #                         "new_deaths": i[5],
+    #                         "total_deaths": i[6],
+    #                         "recovered": i[7],
+    #                         "region": i[8],
+    #                     }
+    #                 )
+    #             else:
+    #                 table.update_item(
+    #                     Key={
+    #                         'place': str(i[0]),
+    #                         'region': 'global'
+    #                     },
+    #                     UpdateExpression='SET cases = :val1, new_cases = :val2, total_cases = :val3, deaths = :val4, new_deaths = :val5, total_deaths = :val6, recovered = :val7',
+    #                     ExpressionAttributeValues={
+    #                         ':val1': i[1],
+    #                         ':val2': i[2],
+    #                         ':val3': i[3],
+    #                         ':val4': i[4],
+    #                         ':val5': i[5],
+    #                         ':val6': i[6],
+    #                         ':val7': i[7],
+    #                     }
+    #                 )
 
     # --------------------------- Uploading in table-----------------------------
 
-    # with open('result.csv', newline='') as f:
+    # with open(KEY, newline='') as f:
     #     reader = csv.reader(f)
     #     data = list(reader)
     #     for i in data:
@@ -320,10 +329,6 @@ def main(event, context):
     #                     "region": i[8],
     #                 }
     #             )
-
-    # ---------------------------S3-----------------------------
-
-    # s3.put_object(Bucket=BUCKET, Key='result.json', Body=data)
 
     # ---------------------------CREATE A TABLE-----------------------------
 
