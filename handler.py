@@ -3,15 +3,14 @@ import scrapy
 import os
 import csv
 from scrapy.crawler import CrawlerProcess
-
+import locale
 
 s3 = boto3.client('s3')
-dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-
-table = dynamodb.Table('Movies')
 
 BUCKET = 'covid-tracker-801101744'
 KEY = 'handle-csv/covid-global.csv'
+
+locale.setlocale(locale.LC_ALL, '')
 
 
 def represents_int(s):
@@ -32,7 +31,7 @@ class ScaperCovid(scrapy.Spider):
 
     def parse(self, response, d_list=data_list):
         rows = response.xpath('//table/tbody[1]/tr[not(@class)]')
-        print('@-@-@-' * 100, rows[0].extract())
+        # print('@-@-@-' * 100, rows[0].extract())
 
         for row in rows[1:]:
 
@@ -45,21 +44,18 @@ class ScaperCovid(scrapy.Spider):
             deaths = 0
             get_third_element = row.css('td')[3].extract().split('</td>')[0].strip()
             if represents_int(get_third_element[-1:]):
-                deaths = (get_third_element.split('<td style="font-weight: bold; text-align:right;">')[1].replace(",",
-                                                                                                                  "").strip())
+                deaths = (get_third_element.split('<td style="font-weight: bold; text-align:right;">')[1].replace(",", "").strip())
 
             new_deaths = 0
             get_fourth_element = row.css('td')[4].extract().split('</td>')[0].strip()
             if represents_int(get_fourth_element[-1:]):
                 new_deaths = (
-                    get_fourth_element.split('text-align:right;background-color:red; color:white">+')[1].replace(",",
-                                                                                                                 "").strip())
+                    get_fourth_element.split('text-align:right;background-color:red; color:white">+')[1].replace(",", "").strip())
 
             recovered = 0
             get_fifth_element = row.css('td')[5].extract().split('</td>')[0].strip()
             if represents_int(get_fifth_element[-1:]):
-                recovered = (get_fifth_element.split('<td style="font-weight: bold; text-align:right">')[1].replace(",",
-                                                                                                                    "").strip())
+                recovered = (get_fifth_element.split('<td style="font-weight: bold; text-align:right">')[1].replace(",", "").strip())
 
             place_name = row.css('td a::text').extract_first()
             if place_name == "USA":
@@ -90,46 +86,9 @@ class ScaperCovid(scrapy.Spider):
                 'region': 'global'
             }
 
-        yield response.follow('https://www.worldometers.info/coronavirus/country/us/', callback=self.parse_world_meter_usa)
+        yield response.follow('https://docs.google.com/spreadsheets/d/e/2PACX-1vR30F8lYP3jG7YOq8es0PBpJIE5yvRVZffOyaqC0GgMBN6yt0Q-NI8pxS7hd1F9dYXnowSC6zpZmW9D/pubhtml?gid=0&amp;single=true&amp;widget=true&amp;headers=false&amp;range=A1:I208#', callback=self.parse_bno_news)
 
-    def parse_world_meter_usa(self, response, d_list=data_list):
-        rows = response.css('table tbody')
-        rows = rows[0].css('tr')
-
-        for row in rows[1:]:
-
-            new_cases = 0
-            get_second_element = row.css('td')[2].extract().split('</td>')[0].strip()
-            if represents_int(get_second_element[-1:]):
-                new_cases = (get_second_element.split('+')[1].replace(",", "").strip())
-
-            deaths = 0
-            get_third_element = row.css('td')[3].extract().split('</td>')[0].strip()
-            if represents_int(get_third_element[-1:]):
-                deaths = (get_third_element.split(';">')[1].replace(",", "").strip())
-
-            new_deaths = 0
-            get_fourth_element = row.css('td')[4].extract().split('</td>')[0].strip()
-            if represents_int(get_fourth_element[-1:]):
-                new_deaths = (get_fourth_element.split('+')[1].replace(",", "").strip())
-
-            recovered = 0
-
-            d_list[row.css('td::text').extract_first().strip()] = {
-                'cases': int(row.css('td::text')[1].extract().replace(",", "").strip()) - int(new_cases),
-                'new_cases': int(new_cases),
-                'total_cases': int(row.css('td::text')[1].extract().replace(",", "").strip()),
-                'deaths': int(deaths) - int(new_deaths),
-                'new_deaths': int(new_deaths),
-                'total_deaths': int(deaths),
-                'recovered': int(recovered),
-                'region': 'United States'
-            }
-
-        yield response.follow(
-            'https://docs.google.com/spreadsheets/d/e/2PACX-1vR30F8lYP3jG7YOq8es0PBpJIE5yvRVZffOyaqC0GgMBN6yt0Q-NI8pxS7hd1F9dYXnowSC6zpZmW9D/pubhtml?gid=0&amp;single=true&amp;widget=true&amp;headers=false&amp;range=A1:I208#',
-            callback=self.parse_bno_news)
-
+   
     def parse_bno_news(self, response, d_list=data_list):
 
         rows = response.css('div#0 table tbody tr')
@@ -157,8 +116,12 @@ class ScaperCovid(scrapy.Spider):
                 new_deaths = int(row.css('td::text')[4].extract().replace(",", ""))
 
             recovered = 0
+            print(country_name, row.css('td::text')[7])
             if row.css('td::text')[7].extract() != 'N/A':
-                recovered = int(row.css('td::text')[7].extract().replace(",", ""))
+                if ',' in row.css('td::text')[7].extract():
+                    recovered = int(row.css('td::text')[7].extract().replace(",", ""))
+                elif '.' in row.css('td::text')[7].extract():
+                    recovered = int(row.css('td::text')[7].extract().replace(".", ""))
 
             region = 'global'
 
@@ -179,60 +142,34 @@ class ScaperCovid(scrapy.Spider):
                         'region': region
                     }
 
-        rows = response.css('div#1902046093 table tbody tr')
-        rows = rows[5:-4]
-
-        for row in rows:
-            country_name = row.css('td::text')[0].extract()
-
-            cases = 0
-            if row.css('td::text')[1].extract() != 'N/A':
-                cases = int(row.css('td::text')[1].extract().replace(",", ""))
-
-            new_cases = 0
-            if row.css('td::text')[2].extract() != 'N/A':
-                new_cases = int(row.css('td::text')[2].extract().replace(",", ""))
-
-            total_cases_bno = cases + new_cases
-
-            deaths = 0
-            if row.css('td::text')[3].extract() != 'N/A':
-                deaths = int(row.css('td::text')[3].extract().replace(",", ""))
-
-            new_deaths = 0
-            if row.css('td::text')[4].extract() != 'N/A':
-                new_deaths = int(row.css('td::text')[4].extract().replace(",", ""))
-
-            recovered = 0
-            if row.css('td::text')[7].extract() != 'N/A':
-                recovered = int(row.css('td::text')[7].extract().replace(",", ""))
-
-            region = 'United States'
-
-            if country_name in d_list:
-                total_cases_wm = d_list.get(country_name).get('total_cases')
-                if total_cases_bno > total_cases_wm:
-                    d_list[country_name] = {
-                        'cases': cases,
-                        'new_cases': new_cases,
-                        'total_cases': total_cases_bno,
-                        'deaths': deaths,
-                        'new_deaths': new_deaths,
-                        'total_deaths': deaths + new_deaths,
-                        'recovered': recovered,
-                        'region': region
-                    }
+        d_list["Total"] = {
+            'cases': sum(int(i.get("cases")) for i in d_list.values()),
+            'new_cases': sum(int(i.get("new_cases")) for i in d_list.values()),
+            'total_cases': sum(int(i.get("total_cases")) for i in d_list.values()),
+            'deaths': sum(int(i.get("deaths")) for i in d_list.values()),
+            'new_deaths': sum(int(i.get("new_deaths")) for i in d_list.values()),
+            'total_deaths': sum(int(i.get("total_deaths")) for i in d_list.values()),
+            'recovered': sum(int(i.get("recovered")) for i in d_list.values()),
+            'region': 'global'
+        }
 
         for k, v in d_list.items():
             yield {
                 "place": k,
                 "cases": v.get("cases"),
+                # "cases_comma": f'{v.get("cases"):n}',
                 "new_cases": v.get("new_cases"),
+                # "new_cases_comma": f'{v.get("new_cases"):n}',
                 "total_cases": v.get("total_cases"),
+                # "total_cases_comma": f'{v.get("total_cases"):n}',
                 "deaths": v.get("deaths"),
+                # "deaths_comma": f'{v.get("deaths"):n}',
                 "new_deaths": v.get("new_deaths"),
+                # "new_deaths_comma": f'{v.get("new_deaths"):n}',
                 "total_deaths": v.get("total_deaths"),
+                # "total_deaths_comma": f'{v.get("total_deaths"):n}',
                 "recovered": v.get("recovered"),
+                # "recovered_comma": f'{v.get("recovered"):n}',
                 "region": v.get("region")
             }
 
@@ -256,109 +193,6 @@ def main(event, context):
 
     process.crawl(ScaperCovid)
     process.start()
-
-
-
-    # --------------------------- Updating else creating in table-----------------------------
-
-    # with open(KEY, newline='') as f:
-    #     reader = csv.reader(f)
-    #     data = list(reader)
-    #     for i in data:
-    #         if i[8] == 'global' and i[0] != "":
-    #             response = table.get_item(
-    #                 Key={
-    #                     'place': str(i[0]),
-    #                     'region': 'global'
-    #                 }
-    #             )
-    #
-    #             if 'Item' not in response.keys():
-    #                 table.put_item(
-    #                     Item={
-    #                         "place": i[0],
-    #                         "cases": i[1],
-    #                         "new_cases": i[2],
-    #                         "total_cases": i[3],
-    #                         "deaths": i[4],
-    #                         "new_deaths": i[5],
-    #                         "total_deaths": i[6],
-    #                         "recovered": i[7],
-    #                         "region": i[8],
-    #                     }
-    #                 )
-    #             else:
-    #                 table.update_item(
-    #                     Key={
-    #                         'place': str(i[0]),
-    #                         'region': 'global'
-    #                     },
-    #                     UpdateExpression='SET cases = :val1, new_cases = :val2, total_cases = :val3, deaths = :val4, new_deaths = :val5, total_deaths = :val6, recovered = :val7',
-    #                     ExpressionAttributeValues={
-    #                         ':val1': i[1],
-    #                         ':val2': i[2],
-    #                         ':val3': i[3],
-    #                         ':val4': i[4],
-    #                         ':val5': i[5],
-    #                         ':val6': i[6],
-    #                         ':val7': i[7],
-    #                     }
-    #                 )
-
-    # --------------------------- Uploading in table-----------------------------
-
-    # with open(KEY, newline='') as f:
-    #     reader = csv.reader(f)
-    #     data = list(reader)
-    #     for i in data:
-    #         print('----------------------------------', i)
-    #         if i[8] == 'United States' and i[0] != "":
-    #             table.put_item(
-    #                 Item={
-    #                     "place": i[0],
-    #                     "cases": i[1],
-    #                     "new_cases": i[2],
-    #                     "total_cases": i[3],
-    #                     "deaths": i[4],
-    #                     "new_deaths": i[5],
-    #                     "total_deaths": i[6],
-    #                     "recovered": i[7],
-    #                     "region": i[8],
-    #                 }
-    #             )
-
-    # ---------------------------CREATE A TABLE-----------------------------
-
-    # table = dynamodb.create_table(
-    #     TableName='Movies',
-    #     KeySchema=[
-    #         {
-    #             'AttributeName': 'place',
-    #             'KeyType': 'HASH'  # Partition key
-    #         },
-    #         {
-    #             'AttributeName': 'region',
-    #             'KeyType': 'RANGE'  # Sort key
-    #         }
-    #     ],
-    #     AttributeDefinitions=[
-    #         {
-    #             'AttributeName': 'place',
-    #             'AttributeType': 'S'
-    #         },
-    #         {
-    #             'AttributeName': 'region',
-    #             'AttributeType': 'S'
-    #         },
-    #
-    #     ],
-    #     ProvisionedThroughput={
-    #         'ReadCapacityUnits': 5,
-    #         'WriteCapacityUnits': 5
-    #     }
-    # )
-
-    #   print("Table status:", table.table_status)
 
     print('All done !')
 
